@@ -17,7 +17,7 @@ def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleav
     _df_pr_cv = _df_pr_cv_temp[_df_pr_cv_temp['count'] >= min_values_for_cv].copy()
     _df_pr_cv['cv'] = _df_pr_cv['std'] / _df_pr_cv['mean']
     
-    # Calculate missed cleavages PER RUN (uses original _df)
+    # Calculate missed cleavages PER RUN
     def calculate_mc_per_run(group):
         """Calculate missed cleavage distribution for a single run"""
         # Get unique peptides (drop duplicates, keep first occurrence)
@@ -40,18 +40,20 @@ def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleav
         
         return pd.Series(result)
     
-    # Apply per run (uses original _df)
+    # Apply per run
     mc_per_run = _df.groupby('Run').apply(calculate_mc_per_run).reset_index()
     
-    # Aggregate per Run (uses original _df)
+    # Aggregate per Run
     _df_agg = _df.groupby('Run', as_index=False).agg({
         'Modified.Sequence': 'nunique',
         'Precursor.Id': 'nunique',
-        'Protein.Group': 'nunique'
+        'Protein.Group': 'nunique',
+        'Precursor.Quantity': 'sum'  # ADD SUM OF NORMALIZED INTENSITIES
     }).rename(columns={
         'Modified.Sequence': 'peptide',
         'Precursor.Id': 'precursor',
-        'Protein.Group': 'protein'
+        'Protein.Group': 'protein',
+        'Precursor.Quantity': 'total_intensity'  # OR CHOOSE YOUR PREFERRED NAME
     })
     
     # Merge missed cleavage data
@@ -63,7 +65,7 @@ def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleav
         avg_mc += _df_agg[f'MC{i}'] * i
     _df_agg['avg_MC'] = avg_mc
     
-    # Add statistics (CV counts use filtered dataframes)
+    # Add statistics
     _df_agg = _df_agg.assign(
         PG20=(_df_pg_cv['cv'] < 0.2).sum(),
         Pr20=(_df_pr_cv['cv'] < 0.2).sum(),
@@ -107,7 +109,7 @@ def load_parquet_cached(path):
     df = pd.read_parquet(path, 
                         columns=['Run', 'PG.Q.Value', 'PG.MaxLFQ', 
                                 'Precursor.Normalised', 'Precursor.Id',
-                                'Protein.Group', 'Stripped.Sequence','Modified.Sequence','Genes'])
+                                'Protein.Group', 'Stripped.Sequence','Modified.Sequence','Genes','Precursor.Quantity'])
     return df
 
 
