@@ -134,3 +134,68 @@ def generate_pattern_list(prefixes, start, end, prefix_all=''):
         prefixes = [prefixes]
     
     return [f"{prefix_all}{prefix}{i}" for prefix in prefixes for i in range(start, end + 1)]
+
+def create_combined_mask(df, tags, column='Run'):
+    """
+    Filter DataFrame to keep only rows where column ends with specific tag(s).
+    Much faster than regex when tags are always at the end of filenames.
+    
+    Args:
+        df (pandas.DataFrame): Input DataFrame
+        tags (str or list): Single tag or list of tags to search for
+        column (str): Column name to search in
+    
+    Returns:
+        pandas.Series: Boolean mask for filtering
+    
+    Examples:
+        'A1' matches: 'Sample_A1', 'Test_A1'
+        'A1' does NOT match: 'Sample_A10', 'A1_test', 'TestA10'
+    """
+    import pandas as pd
+    
+    # Convert single tag to list
+    if isinstance(tags, str):
+        tags = [tags]
+    
+    # Check if column ends with any of the tags
+    # This is MUCH faster than regex
+    mask = df[column].str.endswith(tuple(tags), na=False)
+    
+    return mask
+
+def count_missed_cleavages(sequence, protease='trypsin'):
+    """
+    Count missed cleavages in a peptide sequence.
+    
+    Parameters:
+    -----------
+    sequence : str
+        Peptide sequence (stripped, no modifications)
+    protease : str
+        Protease specificity: 'trypsin' (cleaves after R,K), 
+        'lysc' (cleaves after K), 'argc' (cleaves after R)
+    
+    Returns:
+    --------
+    int : Number of missed cleavages
+    """
+    if not sequence or len(sequence) == 0:
+        return 0
+    
+    # Define cleavage sites for different proteases
+    cleavage_sites = {
+        'trypsin': 'RK',
+        'lysc': 'K',
+        'argc': 'R',
+        'chymotrypsin': 'FWY',
+        'gluc': 'ED'  # Glu-C
+    }
+    
+    sites = cleavage_sites.get(protease.lower(), 'RK')
+    
+    # Count cleavage sites within the sequence
+    # Exclude the last residue (that's where cleavage occurred)
+    missed = sum(1 for aa in sequence[:-1] if aa in sites)
+    
+    return missed
