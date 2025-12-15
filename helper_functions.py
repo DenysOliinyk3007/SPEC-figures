@@ -1,17 +1,23 @@
-def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleavages=2):
+def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleavages=2, min_values_for_cv=3):
     """Process a single experiment"""
     # Filter
     mask = create_combined_mask(df_full, experiment['file_tags'])
     _df = df_full[mask]
     
-    # Calculate CV statistics
-    _df_pg_cv = _df.groupby('Protein.Group')['PG.MaxLFQ'].agg(['mean', 'std'])
+    # Calculate CV statistics - FILTER FOR SUFFICIENT REPLICATES
+    # For Protein Groups
+    _df_pg_cv_temp = _df.groupby('Protein.Group')['PG.MaxLFQ'].agg(['mean', 'std', 'count'])
+    # Only keep protein groups with sufficient values for CV calculation
+    _df_pg_cv = _df_pg_cv_temp[_df_pg_cv_temp['count'] >= min_values_for_cv].copy()
     _df_pg_cv['cv'] = _df_pg_cv['std'] / _df_pg_cv['mean']
     
-    _df_pr_cv = _df.groupby('Precursor.Id')['Precursor.Normalised'].agg(['mean', 'std'])
+    # For Precursors
+    _df_pr_cv_temp = _df.groupby('Precursor.Id')['Precursor.Normalised'].agg(['mean', 'std', 'count'])
+    # Only keep precursors with sufficient values for CV calculation
+    _df_pr_cv = _df_pr_cv_temp[_df_pr_cv_temp['count'] >= min_values_for_cv].copy()
     _df_pr_cv['cv'] = _df_pr_cv['std'] / _df_pr_cv['mean']
     
-    # Calculate missed cleavages PER RUN
+    # Calculate missed cleavages PER RUN (uses original _df)
     def calculate_mc_per_run(group):
         """Calculate missed cleavage distribution for a single run"""
         # Get unique peptides (drop duplicates, keep first occurrence)
@@ -34,10 +40,10 @@ def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleav
         
         return pd.Series(result)
     
-    # Apply per run
+    # Apply per run (uses original _df)
     mc_per_run = _df.groupby('Run').apply(calculate_mc_per_run).reset_index()
     
-    # Aggregate per Run
+    # Aggregate per Run (uses original _df)
     _df_agg = _df.groupby('Run', as_index=False).agg({
         'Modified.Sequence': 'nunique',
         'Precursor.Id': 'nunique',
@@ -57,7 +63,7 @@ def process_experiment(df_full, experiment, protease='trypsin', max_missed_cleav
         avg_mc += _df_agg[f'MC{i}'] * i
     _df_agg['avg_MC'] = avg_mc
     
-    # Add statistics
+    # Add statistics (CV counts use filtered dataframes)
     _df_agg = _df_agg.assign(
         PG20=(_df_pg_cv['cv'] < 0.2).sum(),
         Pr20=(_df_pr_cv['cv'] < 0.2).sum(),
